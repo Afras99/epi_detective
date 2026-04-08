@@ -1,0 +1,28 @@
+spec_version: 1
+name: epi_detective
+version: "0.1.0"
+description: "Disease outbreak investigation environment — AI agents investigate outbreaks by gathering evidence, analyzing data, and identifying pathogens, sources, and transmission routes."
+author: "Afras"
+license: "MIT"
+type: space
+runtime: fastapi
+app: server.app:app
+port: 7860
+
+tasks:
+  - id: "easy"
+    name: "Point-source foodborne outbreak"
+    description: "Investigate a single-source foodborne outbreak at a shared meal event"
+    difficulty: "easy"
+    max_steps: 15
+  - id: "medium"
+    name: "Community respiratory outbreak"
+    description: "Investigate a Legionella outbreak amid concurrent influenza noise"
+    difficulty: "medium"
+    max_steps: 25
+  - id: "hard"
+    name: "Multi-source overlapping outbreaks"
+    description: "Separate and investigate two simultaneous outbreaks in a metro area"
+    difficulty: "hard"
+    max_steps: 35
+

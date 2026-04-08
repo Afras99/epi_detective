@@ -1,0 +1,38 @@
+{
+  "church_potluck": {
+    "display_name": "Church potluck dinner",
+    "typical_attendees": [30, 80],
+    "typical_menu": ["chicken", "potato_salad", "coleslaw", "cake", "macaroni_salad", "fruit_salad"],
+    "exposure_window_hours": [2, 4]
+  },
+  "wedding_reception": {
+    "display_name": "Wedding reception",
+    "typical_attendees": [50, 200],
+    "typical_menu": ["chicken", "ground_beef", "eggs", "romaine_lettuce", "cake", "fruit_salad", "rice"],
+    "exposure_window_hours": [3, 6]
+  },
+  "company_picnic": {
+    "display_name": "Company picnic",
+    "typical_attendees": [40, 120],
+    "typical_menu": ["ground_beef", "chicken", "potato_salad", "coleslaw", "fruit_salad", "cake"],
+    "exposure_window_hours": [3, 5]
+  },
+  "school_cafeteria": {
+    "display_name": "School cafeteria",
+    "typical_attendees": [100, 400],
+    "typical_menu": ["chicken", "ground_beef", "romaine_lettuce", "fried_rice", "sandwiches", "fruit_salad"],
+    "exposure_window_hours": [1, 2]
+  },
+  "birthday_party": {
+    "display_name": "Birthday party",
+    "typical_attendees": [20, 60],
+    "typical_menu": ["chicken", "potato_salad", "cake", "sandwiches", "fruit_salad", "eggs"],
+    "exposure_window_hours": [2, 4]
+  },
+  "restaurant_banquet": {
+    "display_name": "Restaurant banquet",
+    "typical_attendees": [30, 150],
+    "typical_menu": ["chicken", "ground_beef", "romaine_lettuce", "fried_rice", "raw_oysters", "cake"],
+    "exposure_window_hours": [2, 4]
+  }
+}

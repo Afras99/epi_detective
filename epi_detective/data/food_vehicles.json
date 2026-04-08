@@ -1,0 +1,92 @@
+{
+  "potato_salad": {
+    "display_name": "Potato salad",
+    "associated_pathogens": ["s_aureus", "salmonella", "c_perfringens"],
+    "synonyms": ["potato salad", "potato-salad", "potatoes", "cold potato dish"],
+    "typical_attack_rate_if_guilty": [0.65, 0.90]
+  },
+  "chicken": {
+    "display_name": "Chicken",
+    "associated_pathogens": ["salmonella", "campylobacter", "c_perfringens"],
+    "synonyms": ["chicken", "poultry", "fried chicken", "grilled chicken"],
+    "typical_attack_rate_if_guilty": [0.40, 0.75]
+  },
+  "ground_beef": {
+    "display_name": "Ground beef",
+    "associated_pathogens": ["e_coli_o157", "salmonella"],
+    "synonyms": ["ground beef", "hamburger", "beef patty", "burger"],
+    "typical_attack_rate_if_guilty": [0.30, 0.60]
+  },
+  "eggs": {
+    "display_name": "Eggs",
+    "associated_pathogens": ["salmonella", "s_aureus"],
+    "synonyms": ["eggs", "egg dish", "scrambled eggs", "egg salad"],
+    "typical_attack_rate_if_guilty": [0.35, 0.65]
+  },
+  "romaine_lettuce": {
+    "display_name": "Romaine lettuce",
+    "associated_pathogens": ["e_coli_o157", "norovirus", "cyclospora"],
+    "synonyms": ["romaine", "lettuce", "romaine lettuce", "salad greens"],
+    "typical_attack_rate_if_guilty": [0.25, 0.55]
+  },
+  "fried_rice": {
+    "display_name": "Fried rice",
+    "associated_pathogens": ["b_cereus_emetic"],
+    "synonyms": ["fried rice", "rice", "reheated rice"],
+    "typical_attack_rate_if_guilty": [0.40, 0.70]
+  },
+  "raw_oysters": {
+    "display_name": "Raw oysters",
+    "associated_pathogens": ["vibrio_parahaemolyticus", "norovirus", "hepatitis_a"],
+    "synonyms": ["oysters", "raw oysters", "shellfish"],
+    "typical_attack_rate_if_guilty": [0.35, 0.65]
+  },
+  "deli_meat": {
+    "display_name": "Deli meat",
+    "associated_pathogens": ["listeria", "salmonella"],
+    "synonyms": ["deli meat", "cold cuts", "lunch meat", "sliced turkey"],
+    "typical_attack_rate_if_guilty": [0.15, 0.40]
+  },
+  "raw_milk": {
+    "display_name": "Raw milk",
+    "associated_pathogens": ["campylobacter", "salmonella", "e_coli_o157"],
+    "synonyms": ["raw milk", "unpasteurized milk"],
+    "typical_attack_rate_if_guilty": [0.40, 0.70]
+  },
+  "meats_gravy": {
+    "display_name": "Meats and gravy",
+    "associated_pathogens": ["c_perfringens", "salmonella"],
+    "synonyms": ["meat", "gravy", "stew", "roast beef", "meat dish"],
+    "typical_attack_rate_if_guilty": [0.40, 0.70]
+  },
+  "sandwiches": {
+    "display_name": "Sandwiches",
+    "associated_pathogens": ["norovirus", "s_aureus"],
+    "synonyms": ["sandwich", "sandwiches", "sub", "wrap"],
+    "typical_attack_rate_if_guilty": [0.35, 0.65]
+  },
+  "coleslaw": {
+    "display_name": "Coleslaw",
+    "associated_pathogens": ["s_aureus", "norovirus"],
+    "synonyms": ["coleslaw", "cole slaw", "cabbage salad"],
+    "typical_attack_rate_if_guilty": [0.30, 0.60]
+  },
+  "macaroni_salad": {
+    "display_name": "Macaroni salad",
+    "associated_pathogens": ["s_aureus", "salmonella"],
+    "synonyms": ["macaroni salad", "pasta salad", "mac salad"],
+    "typical_attack_rate_if_guilty": [0.40, 0.75]
+  },
+  "cake": {
+    "display_name": "Cake / pastries",
+    "associated_pathogens": ["s_aureus"],
+    "synonyms": ["cake", "pastry", "cream cake", "dessert"],
+    "typical_attack_rate_if_guilty": [0.30, 0.60]
+  },
+  "fruit_salad": {
+    "display_name": "Fruit salad",
+    "associated_pathogens": ["norovirus", "salmonella"],
+    "synonyms": ["fruit salad", "fruit", "cut fruit", "melon"],
+    "typical_attack_rate_if_guilty": [0.25, 0.55]
+  }
+}

@@ -27,12 +27,12 @@ from openai import OpenAI
 
 API_BASE_URL = os.getenv("API_BASE_URL", "https://router.huggingface.co/v1")
 MODEL_NAME = os.getenv("MODEL_NAME", "meta-llama/Llama-3.1-8B-Instruct")
-HF_TOKEN = os.getenv("HF_TOKEN", "")
+HF_TOKEN = os.getenv("HF_TOKEN")
 ENV_URL = os.getenv("ENV_URL", "http://localhost:7860")
 BENCHMARK = "epi_detective"
 SUCCESS_SCORE_THRESHOLD = 0.3
 
-client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN or "dummy")
+client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
 SYSTEM_PROMPT = """You are an expert epidemiologist investigating a disease outbreak.
 

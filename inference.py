@@ -177,6 +177,7 @@ def run_task(task_id: str) -> float:
     steps_taken = 0
     score = 0.0
     success = False
+    episode_done = False
 
     log_start(task=task_id, env=BENCHMARK, model=MODEL_NAME)
 
@@ -223,6 +224,7 @@ def run_task(task_id: str) -> float:
             if done:
                 score = reward
                 success = score >= SUCCESS_SCORE_THRESHOLD
+                episode_done = True
                 break
 
             obs_text = (
@@ -233,8 +235,8 @@ def run_task(task_id: str) -> float:
             )
             messages.append({"role": "user", "content": obs_text})
 
-        # Force submit if not done
-        if not success and (not rewards or steps_taken < max_turns):
+        # Force submit if episode never ended naturally
+        if not episode_done:
             turn = steps_taken + 1
             error_msg = None
             try:
@@ -254,6 +256,7 @@ def run_task(task_id: str) -> float:
                 reward = 0.0
                 score = 0.0
                 done = True
+                episode_done = True
 
             rewards.append(reward)
             steps_taken = turn

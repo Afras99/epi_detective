@@ -5,10 +5,23 @@
 # LICENSE file in the root directory of this source tree.
 
 """
-Pydantic models for the Epi Detective environment.
+Pydantic models for EpiDetective.
 
-Agents submit investigation commands; the environment returns rich observations
-with narrative text, structured data, and per-step rewards.
+EpiAction — what the agent sends to POST /step:
+    command     — one of 10 investigation commands (see README for full list)
+    parameters  — command-specific dict (e.g. {"food_item": "chicken"})
+
+EpiObservation — what the agent receives back:
+    result_type  — type tag: line_list | lab_results | attack_rate | final_score | error | ...
+    data         — structured result (patient records, 2×2 tables, lab findings, etc.)
+    narrative    — plain-English summary an LLM agent can read directly
+    available_actions — commands the agent may call next
+    step_reward  — reward earned this step (+0.02 to +0.08, or -0.02 for repeats)
+    done         — True when submit_final_answer has been called
+    reward       — final score (0.0–1.0) on done=True, else same as step_reward
+    metadata     — extra debug info
+
+Used by inference.py for typed agent interactions and by client.py for the WebSocket client.
 """
 
 from typing import Any, Dict, List

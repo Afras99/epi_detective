@@ -1,5 +1,26 @@
 """
-Evidence engine — gates information behind agent actions and computes statistics.
+Evidence engine for EpiDetective.
+
+Implements information gating — the agent can only learn facts about the outbreak
+by explicitly requesting them through investigation commands, just as a real
+field epidemiologist must physically request lab results, interview patients,
+and order environmental swabs.
+
+Each handler corresponds to a real investigative action from the CDC 13-step
+outbreak investigation protocol:
+
+  view_initial_alert           → Step 1: Verify the outbreak exists
+  request_line_list            → Step 2: Define and find cases
+  generate_epi_curve           → Step 3: Describe cases by time
+  request_lab_results          → Step 4: Confirm diagnosis with lab data
+  get_exposure_history         → Step 5: Describe cases by person/place
+  calculate_attack_rate        → Step 6: Develop hypotheses (2×2 table)
+  calculate_odds_ratio         → Step 6: Test hypotheses (OR analysis)
+  request_environmental_samples → Step 7: Environmental investigation
+  submit_hypothesis            → Step 8: Test theory (partial feedback only)
+  submit_final_answer          → Steps 9-13: Implement control + report
+
+Rewards are given for new evidence. Repeating the same action incurs -0.02.
 """
 import json
 from collections import Counter

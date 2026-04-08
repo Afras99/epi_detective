@@ -1,6 +1,26 @@
 """
 Scenario generator for EpiDetective.
-Takes a task difficulty + random seed → produces a complete, deterministic scenario.
+
+Converts a (task_id, seed) pair into a fully-populated, deterministic EpiScenario:
+  - Selects pathogen, food vehicle, venue, and attendee count from curated real-world data
+  - Generates a synthetic patient line list with realistic incubation periods and symptoms
+  - Builds an exposure matrix (who ate what) with the guilty food correctly biased
+  - Produces lab results, environmental swab results, and an initial alert narrative
+  - Attaches ground truth used by the grader
+
+Three task difficulties:
+  easy   — single pathogen, single contaminated food, 15 step budget
+  medium — Legionella with concurrent flu noise, 25 step budget
+  hard   — two simultaneous outbreaks (different pathogens + sources), 35 step budget
+
+All patient names, demographics, and exposure histories are synthetically generated —
+no real patient data is used. Pathogen profiles are grounded in CDC/FDA reference data.
+
+Usage:
+    gen = ScenarioGenerator()
+    scenario = gen.generate("easy", seed=42)
+    print(scenario.initial_alert)
+    print(scenario.ground_truth)
 """
 import json
 import math

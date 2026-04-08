@@ -1,6 +1,23 @@
 """
 Deterministic grader for EpiDetective.
-Scores agent submissions against planted ground truth.
+
+Scores a final submission against the scenario's planted ground truth across
+5 components, each reflecting a real public health investigation deliverable:
+
+  Component                     Weight  What it measures
+  ──────────────────────────────────────────────────────
+  Pathogen identification         25%   Correct organism (fuzzy synonym matching)
+  Food source identification      25%   Correct vehicle (fuzzy synonym matching)
+  Transmission route              20%   Correct route (foodborne / waterborne / etc.)
+  Case definition quality         15%   Presence of clinical + time + place criteria
+  Step efficiency                 15%   Fewer steps = higher efficiency bonus
+
+Pathogen and source matching uses normalised fuzzy matching so common synonyms
+(e.g. "salmonellosis", "S. typhimurium", "salmonella_enterica") all match "salmonella".
+
+The EpiGrader.grade() method returns a float in [0.0, 1.0].
+compute_step_reward() returns dense per-step rewards to encourage systematic evidence
+gathering rather than random guessing.
 """
 import json
 

@@ -184,6 +184,20 @@ def root():
     * { margin: 0; padding: 0; box-sizing: border-box; }
     body { font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
            background: #0f1117; color: #e2e8f0; min-height: 100vh; }
+    .realworld { background: #161b27; border: 1px solid #2d3748; border-left: 4px solid #48bb78;
+                 border-radius: 8px; padding: 20px 24px; margin-bottom: 40px; }
+    .realworld h3 { color: #68d391; font-size: 14px; font-weight: 700;
+                    text-transform: uppercase; letter-spacing: 1px; margin-bottom: 10px; }
+    .realworld p { color: #a0aec0; font-size: 14px; line-height: 1.7; }
+    .realworld strong { color: #e2e8f0; }
+    .steps { counter-reset: step; margin-bottom: 40px; }
+    .step-item { display: flex; gap: 16px; margin-bottom: 16px; align-items: flex-start; }
+    .step-num { background: #1a3a2a; color: #48bb78; border: 1px solid #276749;
+                border-radius: 50%; width: 32px; height: 32px; flex-shrink: 0;
+                display: flex; align-items: center; justify-content: center;
+                font-weight: 700; font-size: 13px; }
+    .step-text h4 { color: #e2e8f0; font-size: 14px; margin-bottom: 4px; }
+    .step-text p { color: #718096; font-size: 13px; }
     .hero { background: linear-gradient(135deg, #1a1f2e 0%, #162032 100%);
             border-bottom: 1px solid #2d3748; padding: 60px 40px; text-align: center; }
     .badge { display: inline-block; background: #22543d; color: #68d391;
@@ -252,6 +266,31 @@ def root():
   </div>
 
   <div class="container">
+
+    <div class="realworld">
+      <h3>🏥 Real-World Professional Workflow</h3>
+      <p>
+        EpiDetective directly models the <strong>CDC's canonical 13-step outbreak investigation protocol</strong> —
+        the same methodology used by epidemiologists at CDC, WHO, and state health departments to investigate
+        <strong>thousands of foodborne illness clusters every year</strong>. Every action in this environment
+        corresponds to something a real public health investigator actually does in the field.
+        <br><br>
+        Pathogen profiles, incubation periods, and food–pathogen associations are drawn from
+        <strong>CDC NORS outbreak records (1998–2022)</strong>, the <strong>FDA Bad Bug Book</strong>, and
+        peer-reviewed literature. This is not a game — an agent that solves this environment is learning
+        skills directly applicable to automated outbreak surveillance.
+      </p>
+    </div>
+
+    <h2>Investigation Workflow</h2>
+    <div class="steps">
+      <div class="step-item"><div class="step-num">1</div><div class="step-text"><h4>view_initial_alert</h4><p>Read the outbreak notification from the health department</p></div></div>
+      <div class="step-item"><div class="step-num">2</div><div class="step-text"><h4>request_line_list</h4><p>Get all ill patients — demographics, onset times, symptoms, hospitalizations</p></div></div>
+      <div class="step-item"><div class="step-num">3</div><div class="step-text"><h4>request_lab_results</h4><p>Identify the pathogen from clinical specimens (+0.08 reward)</p></div></div>
+      <div class="step-item"><div class="step-num">4</div><div class="step-text"><h4>get_exposure_history</h4><p>Find out what each patient ate or where they went</p></div></div>
+      <div class="step-item"><div class="step-num">5</div><div class="step-text"><h4>calculate_attack_rate</h4><p>Run 2×2 tables to find which food has the highest relative risk</p></div></div>
+      <div class="step-item"><div class="step-num">6</div><div class="step-text"><h4>submit_final_answer</h4><p>Submit pathogen + source + route + case definition → receive final score (0.0–1.0)</p></div></div>
+    </div>
 
     <h2>Tasks</h2>
     <div class="grid">
@@ -435,19 +474,21 @@ Use `submit_hypothesis` at any point to get partial feedback without ending the 
 def step(action: ActionRequest):
     global step_count, action_history, is_done, total_reward
 
-    if current_scenario is None:
-        return StepResponse(
-            observation={
-                "result_type": "error",
-                "narrative": "No active investigation. Call POST /reset first.",
-                "data": {},
-                "available_actions": [],
-                "done": False,
-            },
-            reward=0.0,
-            done=False,
-            state=_get_state(),
-        )
+    if current_scenario is None or (step_count == 0 and not action_history and not is_done):
+        if current_scenario is None:
+            return StepResponse(
+                observation={
+                    "result_type": "error",
+                    "narrative": "No active investigation. Call POST /reset with task_id='easy', 'medium', or 'hard' to start.",
+                    "data": {},
+                    "available_actions": ["reset"],
+                    "step_reward": 0.0,
+                    "done": False,
+                },
+                reward=0.0,
+                done=False,
+                state=_get_state(),
+            )
 
     if is_done:
         return StepResponse(

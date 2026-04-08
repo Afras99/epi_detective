@@ -233,6 +233,7 @@ class EvidenceEngine:
         ar_result = self._handle_attack_rate({"food_item": food_item})
         d = ar_result["data"]
         if not d:
+            ar_result["result_type"] = "odds_ratio"
             return ar_result
 
         a, b, c, d_val = d["ate_ill"], d["ate_well"], d["not_ate_ill"], d["not_ate_well"]

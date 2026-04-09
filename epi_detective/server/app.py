@@ -40,6 +40,7 @@ if str(_pkg_root) not in sys.path:
 from engine.scenario_generator import ScenarioGenerator
 from engine.evidence_engine import EvidenceEngine
 from grader.grader import EpiGrader, compute_step_reward
+from models import EpiAction, EpiObservation
 
 app = FastAPI(
     title="EpiDetective",
@@ -81,8 +82,10 @@ The agent must gather evidence systematically and identify the **pathogen**, **f
 )
 
 # ── Request / Response models ─────────────────────────────────────────────────
+# EpiAction and EpiObservation are the canonical typed spec from models.py.
+# ActionRequest extends EpiAction with richer Swagger field descriptions.
 
-class ActionRequest(BaseModel):
+class ActionRequest(EpiAction):
     command: str = Field(
         default="request_line_list",
         description="Investigation command to execute. One of: view_initial_alert, request_line_list, generate_epi_curve, request_lab_results, get_exposure_history, calculate_attack_rate, calculate_odds_ratio, request_environmental_samples, submit_hypothesis, submit_final_answer",
@@ -130,11 +133,12 @@ class ResetRequest(BaseModel):
         description="Session identifier for concurrent use. Auto-generated if not provided.",
     )
 
-class StepResponse(BaseModel):
+class StepResponse(EpiObservation):
+    """Full step response — extends EpiObservation with structured state."""
     observation: Dict[str, Any] = Field(description="What the agent observes: narrative text, structured data, available actions, step reward")
-    reward: float = Field(description="Reward for this step. Per-step: 0.02–0.08. Final score: 0.0–1.0 on submit_final_answer")
-    done: bool = Field(description="True when the episode is complete (after submit_final_answer or step budget exhausted)")
-    state: Dict[str, Any] = Field(description="Current session state: step_count, steps_remaining, evidence_unlocked, task_id")
+    reward: float = Field(default=0.0, description="Reward for this step. Per-step: 0.02–0.08. Final score: 0.0–1.0 on submit_final_answer")
+    done: bool = Field(default=False, description="True when the episode is complete (after submit_final_answer or step budget exhausted)")
+    state: Dict[str, Any] = Field(default_factory=dict, description="Current session state: step_count, steps_remaining, evidence_unlocked, task_id")
 
 # ── Available commands ────────────────────────────────────────────────────────
 

@@ -146,14 +146,23 @@ class EvidenceEngine:
 
         positive = [r for r in results.values() if r["result"] == "POSITIVE"]
         organisms = Counter(r.get("organism", "Unknown") for r in positive)
-        top_org = organisms.most_common(1)[0] if organisms else ("None identified", 0)
+
+        # Show ALL distinct organisms — critical for hard task where two pathogens coexist
+        if len(organisms) > 1:
+            org_lines = "; ".join(f"{org} ({cnt} cases)" for org, cnt in organisms.most_common())
+            organism_text = f"Organisms identified: {org_lines}."
+        elif organisms:
+            top_org = organisms.most_common(1)[0]
+            organism_text = f"Most common organism identified: {top_org[0]} ({top_org[1]} cases)."
+        else:
+            organism_text = "No organisms identified in tested cases."
 
         narrative = (
             f"Lab results for {len(case_ids)} cases: "
             f"{len(positive)} positive, "
             f"{sum(1 for r in results.values() if r['result'] == 'PENDING')} pending, "
             f"{sum(1 for r in results.values() if r['result'] == 'NOT_TESTED')} not tested.\n"
-            f"Most common organism identified: {top_org[0]} ({top_org[1]} cases)."
+            f"{organism_text}"
         )
         return {"result_type": "lab_results", "data": {"results": results}, "narrative": narrative}
 
@@ -258,29 +267,49 @@ class EvidenceEngine:
         location = params.get("location", "kitchen")
         gt = self.scenario.ground_truth
 
-        # Environmental samples confirm the source if location is relevant
+        # Environmental samples confirm the source only if the location is relevant.
+        # For hard (multi_outbreak), both pathogens are foodborne so kitchen still applies.
         found = False
-        if gt["route"] in ("foodborne",) and "kitchen" in location.lower():
-            found = True
-        if gt.get("type") == "multi_outbreak":
-            found = True
+        if "kitchen" in location.lower():
+            if gt.get("type") == "multi_outbreak":
+                # Both outbreaks are foodborne — confirm kitchen contamination
+                found = True
+            elif gt.get("route") in ("foodborne",):
+                found = True
 
         if found:
-            pathogen_name = gt.get("pathogen_full_name", gt["pathogen"])
-            # Only name the specific food source if the agent has already done
-            # exposure/statistical analysis — otherwise give a vague but honest result.
-            # This prevents a 3-step shortcut that bypasses the entire investigation mechanic.
+            # Build pathogen confirmation — for multi_outbreak show both organisms
+            if gt.get("type") == "multi_outbreak":
+                ob_a = gt["outbreak_a"]
+                ob_b = gt["outbreak_b"]
+                from engine.scenario_generator import PATHOGENS
+                name_a = PATHOGENS.get(ob_a["pathogen"], {}).get("full_name", ob_a["pathogen"])
+                name_b = PATHOGENS.get(ob_b["pathogen"], {}).get("full_name", ob_b["pathogen"])
+                pathogen_text = f"Two organisms detected: {name_a} and {name_b}."
+            else:
+                pathogen_name = gt.get("pathogen_full_name", gt["pathogen"])
+                pathogen_text = f"{pathogen_name} detected in food preparation area."
+
+            # Only reveal the specific food vehicle after exposure analysis is done.
+            # This prevents a 3-step shortcut that bypasses the investigation mechanic.
             if "exposure_history" in self.unlocked or "attack_rate" in self.unlocked:
-                source_name = gt.get("source_display_name", gt["source"].replace("_", " "))
-                source_text = f"Samples from {source_name} tested POSITIVE."
+                if gt.get("type") == "multi_outbreak":
+                    from engine.scenario_generator import FOOD_VEHICLES
+                    src_a = FOOD_VEHICLES.get(ob_a["source"], {}).get("display_name", ob_a["source"])
+                    src_b = FOOD_VEHICLES.get(ob_b["source"], {}).get("display_name", ob_b["source"])
+                    source_text = f"Contaminated vehicles identified: {src_a} and {src_b}."
+                else:
+                    source_name = gt.get("source_display_name", gt["source"].replace("_", " "))
+                    source_text = f"Samples from {source_name} tested POSITIVE."
             else:
                 source_text = (
                     "Contamination detected across multiple food preparation surfaces. "
-                    "Gather patient exposure histories to identify the specific vehicle."
+                    "Gather patient exposure histories to identify the specific vehicle(s)."
                 )
+
             narrative = (
                 f"Environmental samples collected from {location}.\n"
-                f"Result: {pathogen_name} detected in food preparation area.\n"
+                f"Result: {pathogen_text}\n"
                 f"{source_text}"
             )
         else:

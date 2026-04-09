@@ -158,6 +158,75 @@ def parse_action(text: str) -> dict:
     return {"command": "request_line_list", "parameters": {}}
 
 
+def extract_best_guess(messages: list) -> dict:
+    """
+    Scan conversation history to extract the best available answers when
+    the agent runs out of steps without submitting. Looks for:
+    - Pathogen: from lab results narrative (organism names)
+    - Source: from highest relative_risk food in attack_rate narratives
+    - Route: foodborne default (covers all current tasks)
+    - Case definition: assembled from line_list + epi curve observations
+    """
+    pathogen = "unknown"
+    source = "unknown"
+    onset_window = "unknown onset"
+    place = "unknown location"
+    symptoms_text = "gastrointestinal illness"
+
+    for msg in messages:
+        content = msg.get("content", "")
+        if not content:
+            continue
+
+        # Extract pathogen from lab results
+        m = re.search(r'organism(?:s)? identified[:\s]+([A-Za-z][A-Za-z .,/]+?)(?:\s*\(|\.|;)', content, re.IGNORECASE)
+        if m and pathogen == "unknown":
+            raw = m.group(1).strip().lower().replace(" ", "_").replace(".", "")
+            # Map common display names back to keys
+            for known in ["salmonella", "e_coli", "norovirus", "s_aureus", "campylobacter",
+                          "listeria", "shigella", "hepatitis_a", "c_perfringens",
+                          "b_cereus", "cryptosporidium", "cyclospora", "legionella"]:
+                if known.replace("_", "") in raw.replace("_", ""):
+                    pathogen = known
+                    break
+            if pathogen == "unknown":
+                pathogen = raw[:40]
+
+        # Extract highest-RR food from attack rate narratives
+        m = re.search(r'Relative risk:\s*([\d.]+)', content)
+        if m:
+            rr = float(m.group(1))
+            food_m = re.search(r'Attack rate for ([a-z_]+):', content)
+            if food_m and rr > 1.5:
+                source = food_m.group(1)
+
+        # Extract onset window from epi curve or line list
+        m = re.search(r'onset(?:\s+span)?[:\s]+(\d+)\s+hours', content, re.IGNORECASE)
+        if m and onset_window == "unknown onset":
+            onset_window = f"onset within {m.group(1)} hours of exposure"
+
+        # Extract symptoms from line list
+        m = re.search(r'(?:symptoms|Most common symptoms)[:\s]+([a-z ,/()]+\d+/\d+[a-z ,/()]+)', content, re.IGNORECASE)
+        if m and symptoms_text == "gastrointestinal illness":
+            symptoms_text = m.group(1).strip()[:120]
+
+        # Extract place from initial alert or exposure history
+        m = re.search(r'(?:held at|occurred at|at the|event[:\s]+)([A-Z][A-Za-z ,]+?)(?:\.|,|\n|held)', content)
+        if m and place == "unknown location":
+            place = m.group(1).strip()[:80]
+
+    return {
+        "pathogen": pathogen,
+        "source": source,
+        "route": "foodborne",
+        "case_definition": {
+            "clinical": symptoms_text,
+            "time": onset_window,
+            "place": place,
+        },
+    }
+
+
 def get_llm_action(messages: list) -> str:
     """Call the LLM and return the raw response text."""
     try:
@@ -243,19 +312,14 @@ def run_task(task_id: str) -> float:
             )
             messages.append({"role": "user", "content": obs_text})
 
-        # Force submit if episode never ended naturally
+        # Force submit if episode never ended naturally — extract best guess from history
         if not episode_done:
             turn = steps_taken + 1
             error_msg = None
+            best_guess = extract_best_guess(messages)
+            print(f"[DEBUG] Force-submit best guess: {best_guess}", flush=True)
             try:
-                result = env_step("submit_final_answer", {
-                    "pathogen": "unknown", "source": "unknown", "route": "foodborne",
-                    "case_definition": {
-                        "clinical": "gastrointestinal illness",
-                        "time": "unknown onset",
-                        "place": "unknown location",
-                    },
-                })
+                result = env_step("submit_final_answer", best_guess)
                 reward = float(result["reward"])
                 score = reward
                 done = True

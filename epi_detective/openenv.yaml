@@ -16,8 +16,8 @@ tasks:
     difficulty: "easy"
     max_steps: 15
   - id: "medium"
-    name: "Community respiratory outbreak"
-    description: "Investigate a Legionella outbreak amid concurrent influenza noise"
+    name: "Community-wide foodborne outbreak"
+    description: "Investigate a foodborne outbreak spread across multiple locations with concurrent illness noise — harder to isolate signal"
     difficulty: "medium"
     max_steps: 25
   - id: "hard"

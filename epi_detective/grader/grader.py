@@ -59,7 +59,8 @@ class EpiGrader:
         # 5. Efficiency (0.15)
         score += 0.15 * self._grade_efficiency(steps_taken, optimal_steps, max_steps)
 
-        return round(min(max(score, 0.0), 1.0), 4)
+        # Score must be strictly between 0 and 1 (exclusive) per validator spec
+        return round(min(max(score, 0.001), 0.999), 4)
 
     def _grade_pathogen(self, submitted, correct, synonyms):
         sub = self._normalize(submitted)

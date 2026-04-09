@@ -202,6 +202,7 @@ class EvidenceEngine:
                 "data": {},
                 "narrative": f"Food item '{food_item}' not found in exposure data. Available: {', '.join(self.scenario.menu_items)}",
             }
+        self.unlocked.add("attack_rate")
 
         ill_ids = {p["case_id"] for p in self.scenario.ill_people}
         ate_ill = ate_well = not_ate_ill = not_ate_well = 0
@@ -265,11 +266,22 @@ class EvidenceEngine:
             found = True
 
         if found:
+            pathogen_name = gt.get("pathogen_full_name", gt["pathogen"])
+            # Only name the specific food source if the agent has already done
+            # exposure/statistical analysis — otherwise give a vague but honest result.
+            # This prevents a 3-step shortcut that bypasses the entire investigation mechanic.
+            if "exposure_history" in self.unlocked or "attack_rate" in self.unlocked:
+                source_name = gt.get("source_display_name", gt["source"].replace("_", " "))
+                source_text = f"Samples from {source_name} tested POSITIVE."
+            else:
+                source_text = (
+                    "Contamination detected across multiple food preparation surfaces. "
+                    "Gather patient exposure histories to identify the specific vehicle."
+                )
             narrative = (
                 f"Environmental samples collected from {location}.\n"
-                f"Result: {gt.get('pathogen_full_name', gt['pathogen'])} "
-                f"detected in food preparation area. "
-                f"Samples from {gt.get('source_display_name', gt['source'])} tested POSITIVE."
+                f"Result: {pathogen_name} detected in food preparation area.\n"
+                f"{source_text}"
             )
         else:
             narrative = f"Environmental samples collected from {location}. No significant findings."

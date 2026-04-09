@@ -41,25 +41,31 @@ SYSTEM_PROMPT = """You are an expert epidemiologist investigating a disease outb
 - request_line_list — Get patient demographics, onset dates, symptoms
 - generate_epi_curve — Temporal case distribution (params: {"grouping": "hour"})
 - request_lab_results — Pathogen lab results (params: {"case_ids": ["c001","c002"]})
-- get_exposure_history — What patients ate/visited (params: {"case_ids": ["c001"]})
-- calculate_attack_rate — Statistical food analysis (params: {"food_item": "potato_salad"})
-- calculate_odds_ratio — Association measure (params: {"exposure": "chicken"})
-- request_environmental_samples — Facility tests (params: {"location": "kitchen"})
-- submit_hypothesis — Test theory (params: {"pathogen": "...", "source": "...", "route": "..."})
+- get_exposure_history — What patients ate/visited (params: {})
+- calculate_attack_rate — 2x2 table + relative risk for a specific food (params: {"food_item": "<food_name_from_exposure_history>"})
+- calculate_odds_ratio — Odds ratio for a food (params: {"exposure": "<food_name_from_exposure_history>"})
+- request_environmental_samples — Facility swab tests (params: {"location": "kitchen"})
+- submit_hypothesis — Test theory mid-investigation, max 3 attempts (params: {"pathogen": "...", "source": "...", "route": "..."})
 - submit_final_answer — Final submission (params: {"pathogen": "...", "source": "...", "route": "...", "case_definition": {"clinical": "...", "time": "...", "place": "..."}})
 
 ## Response format — ALWAYS use this exact format:
-THOUGHT: [your reasoning about the evidence so far]
-ACTION: {"command": "request_line_list", "parameters": {}}
+THOUGHT: [your reasoning about what the evidence shows and what to do next]
+ACTION: {"command": "tool_name", "parameters": {}}
 
-## Investigation strategy:
-1. request_line_list — see who got sick and when (incubation period clues)
-2. request_lab_results — identify the pathogen from specimens
-3. get_exposure_history — see what patients ate at the event
-4. calculate_attack_rate — find the highest-risk food statistically
-5. submit_final_answer — report pathogen, source, route, case definition
+## Systematic investigation strategy:
+1. request_line_list — note symptom pattern, onset window, incubation period → narrows pathogen type
+2. request_lab_results — confirm pathogen from specimens (most valuable single action)
+3. get_exposure_history — get list of foods consumed by cases; note the TOP foods by frequency
+4. calculate_attack_rate — run for the top 2-3 suspect foods from exposure history (highest relative risk = guilty food)
+5. submit_final_answer — include pathogen (from lab), source (highest RR food), route (foodborne/waterborne/etc), and case_definition with clinical criteria from symptoms, time window from epi curve, place from the alert
 
-Be systematic. Avoid repeating actions (costs -0.02 each)."""
+## Case definition format:
+- clinical: specific symptoms from the line list (e.g. "nausea, vomiting, and diarrhea within 6-72h")
+- time: onset window (e.g. "onset 6-48 hours after exposure on [event date]")
+- place: exposure location from initial alert (e.g. "attendees of [event] at [venue]")
+
+CRITICAL: Use exact food names from the exposure history output (e.g. "potato_salad", "chicken", "ground_beef").
+Do not repeat actions — each repeat costs -0.02. Be efficient."""
 
 AVAILABLE_ACTIONS = [
     "view_initial_alert", "request_line_list", "generate_epi_curve",

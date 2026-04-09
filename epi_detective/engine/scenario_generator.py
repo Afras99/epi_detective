@@ -55,10 +55,9 @@ TASK_CONFIGS = {
         "optimal_steps": 8,
     },
     "medium": {
-        "name": "Community respiratory outbreak",
-        "description": "Investigate a Legionella outbreak with concurrent influenza noise",
-        "pathogen_pool": ["legionella"],
-        "noise_pathogen": "norovirus",
+        "name": "Community-wide foodborne outbreak",
+        "description": "Investigate a foodborne outbreak spread across multiple locations, with concurrent illness noise",
+        "pathogen_pool": ["campylobacter", "listeria", "shigella", "hepatitis_a", "cyclospora"],
         "num_attendees": [80, 150],
         "ill_fraction": [0.15, 0.30],
         "num_menu_items": [6, 8],
@@ -443,13 +442,13 @@ class ScenarioGenerator:
             )
         elif task_id == "medium":
             return (
-                f"The state health department has been notified of an unusual cluster of "
-                f"respiratory and gastrointestinal illness across multiple facilities. Over the "
-                f"past week, {n_ill} cases have been identified. Cases present with {symptom_str}. "
-                f"Concurrent seasonal influenza activity is noted in the region. "
-                f"{hosp_text} An investigation is underway to determine whether these cases "
-                f"represent a single outbreak or multiple unrelated illness clusters. "
-                f"Your task: identify the causative pathogen, the source of exposure, "
+                f"The state health department has been notified of a cluster of "
+                f"gastrointestinal illness affecting residents across multiple locations. Over the "
+                f"past week, {n_ill} cases have been identified among approximately {n_attendees} exposed individuals. "
+                f"Cases present with {symptom_str}. Concurrent seasonal gastroenteritis activity is noted in the region. "
+                f"{hosp_text} An investigation is underway to identify whether these cases share a common exposure "
+                f"source. "
+                f"Your task: identify the causative pathogen, the contaminated food source, "
                 f"and the transmission route."
             )
         else:

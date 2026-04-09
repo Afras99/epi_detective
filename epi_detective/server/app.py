@@ -88,6 +88,10 @@ class ActionRequest(BaseModel):
         description="Investigation command to execute. One of: view_initial_alert, request_line_list, generate_epi_curve, request_lab_results, get_exposure_history, calculate_attack_rate, calculate_odds_ratio, request_environmental_samples, submit_hypothesis, submit_final_answer",
         examples=["request_line_list", "submit_final_answer"],
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session identifier returned by /reset. Uses default session if not provided.",
+    )
     parameters: Dict[str, Any] = Field(
         default={},
         description="""Command-specific parameters:
@@ -121,6 +125,10 @@ class ResetRequest(BaseModel):
         description="Random seed for reproducibility. Same seed always produces the same outbreak scenario. Leave empty for a random scenario.",
         examples=[42, 99, 1234],
     )
+    session_id: Optional[str] = Field(
+        default=None,
+        description="Session identifier for concurrent use. Auto-generated if not provided.",
+    )
 
 class StepResponse(BaseModel):
     observation: Dict[str, Any] = Field(description="What the agent observes: narrative text, structured data, available actions, step reward")
@@ -143,30 +151,44 @@ AVAILABLE_ACTIONS: List[str] = [
     "submit_final_answer",
 ]
 
-# ── Global session state (single session — suitable for HF Spaces) ────────────
+# ── Session state ─────────────────────────────────────────────────────────────
+
+import uuid
 
 generator = ScenarioGenerator()
 grader = EpiGrader()
 
-current_scenario = None
-evidence_engine = None
-step_count = 0
-action_history: set = set()
-is_done = False
-total_reward = 0.0
+
+class SessionState:
+    def __init__(self):
+        self.scenario = None
+        self.evidence_engine = None
+        self.step_count = 0
+        self.action_history: set = set()
+        self.is_done = False
+        self.total_reward = 0.0
+
+
+sessions: Dict[str, SessionState] = {}
+
+
+def _get_or_create_session(session_id: str) -> SessionState:
+    if session_id not in sessions:
+        sessions[session_id] = SessionState()
+    return sessions[session_id]
 
 
 # ── Helpers ───────────────────────────────────────────────────────────────────
 
-def _get_state() -> Dict[str, Any]:
+def _get_state(sess: SessionState) -> Dict[str, Any]:
     return {
-        "step_count": step_count,
-        "is_done": is_done,
-        "total_reward": round(total_reward, 4),
-        "task_id": current_scenario.task_id if current_scenario else None,
-        "steps_remaining": (current_scenario.max_steps - step_count) if current_scenario else 0,
-        "evidence_unlocked": list(evidence_engine.unlocked) if evidence_engine else [],
-        "actions_taken": len(action_history),
+        "step_count": sess.step_count,
+        "is_done": sess.is_done,
+        "total_reward": round(sess.total_reward, 4),
+        "task_id": sess.scenario.task_id if sess.scenario else None,
+        "steps_remaining": (sess.scenario.max_steps - sess.step_count) if sess.scenario else 0,
+        "evidence_unlocked": list(sess.evidence_engine.unlocked) if sess.evidence_engine else [],
+        "actions_taken": len(sess.action_history),
     }
 
 
@@ -426,20 +448,21 @@ The scenario is fully seeded — passing the same `seed` and `task_id` always pr
 Returns the initial alert text describing the outbreak, available investigation commands, and session state.""",
 )
 def reset(req: ResetRequest = ResetRequest()):
-    global current_scenario, evidence_engine, step_count, action_history, is_done, total_reward
+    session_id = req.session_id or "default"
+    sess = _get_or_create_session(session_id)
 
     seed = req.seed if req.seed is not None else random.randint(0, 2**31)
-    current_scenario = generator.generate(req.task_id, seed)
-    evidence_engine = EvidenceEngine(current_scenario)
-    step_count = 0
-    action_history = set()
-    is_done = False
-    total_reward = 0.0
+    sess.scenario = generator.generate(req.task_id, seed)
+    sess.evidence_engine = EvidenceEngine(sess.scenario)
+    sess.step_count = 0
+    sess.action_history = set()
+    sess.is_done = False
+    sess.total_reward = 0.0
 
     observation = {
         "result_type": "alert",
-        "data": {"task_id": req.task_id, "seed": seed},
-        "narrative": current_scenario.initial_alert,
+        "data": {"task_id": req.task_id, "seed": seed, "session_id": session_id},
+        "narrative": sess.scenario.initial_alert,
         "available_actions": AVAILABLE_ACTIONS,
         "step_reward": 0.0,
         "done": False,
@@ -449,7 +472,7 @@ def reset(req: ResetRequest = ResetRequest()):
         observation=observation,
         reward=0.0,
         done=False,
-        state=_get_state(),
+        state=_get_state(sess),
     )
 
 
@@ -472,25 +495,25 @@ Each command gathers different evidence. The agent must choose wisely — repeat
 Use `submit_hypothesis` at any point to get partial feedback without ending the episode.""",
 )
 def step(action: ActionRequest):
-    global step_count, action_history, is_done, total_reward
+    session_id = action.session_id or "default"
+    sess = _get_or_create_session(session_id)
 
-    if current_scenario is None or (step_count == 0 and not action_history and not is_done):
-        if current_scenario is None:
-            return StepResponse(
-                observation={
-                    "result_type": "error",
-                    "narrative": "No active investigation. Call POST /reset with task_id='easy', 'medium', or 'hard' to start.",
-                    "data": {},
-                    "available_actions": ["reset"],
-                    "step_reward": 0.0,
-                    "done": False,
-                },
-                reward=0.0,
-                done=False,
-                state=_get_state(),
-            )
+    if sess.scenario is None:
+        return StepResponse(
+            observation={
+                "result_type": "error",
+                "narrative": "No active investigation. Call POST /reset with task_id='easy', 'medium', or 'hard' to start.",
+                "data": {},
+                "available_actions": ["reset"],
+                "step_reward": 0.0,
+                "done": False,
+            },
+            reward=0.0,
+            done=False,
+            state=_get_state(sess),
+        )
 
-    if is_done:
+    if sess.is_done:
         return StepResponse(
             observation={
                 "result_type": "error",
@@ -501,10 +524,10 @@ def step(action: ActionRequest):
             },
             reward=0.0,
             done=True,
-            state=_get_state(),
+            state=_get_state(sess),
         )
 
-    step_count += 1
+    sess.step_count += 1
     command = action.command
     params = action.parameters
 
@@ -512,21 +535,21 @@ def step(action: ActionRequest):
     if command == "submit_final_answer":
         final_score = grader.grade(
             params,
-            current_scenario.ground_truth,
-            step_count,
-            current_scenario.optimal_steps,
-            current_scenario.max_steps,
+            sess.scenario.ground_truth,
+            sess.step_count,
+            sess.scenario.optimal_steps,
+            sess.scenario.max_steps,
         )
-        is_done = True
-        total_reward = final_score
+        sess.is_done = True
+        sess.total_reward = final_score
 
         return StepResponse(
             observation={
                 "result_type": "final_score",
-                "data": {"score": final_score, "steps_taken": step_count},
+                "data": {"score": final_score, "steps_taken": sess.step_count},
                 "narrative": (
                     f"Investigation complete. Final score: {final_score:.4f} / 1.0 "
-                    f"({step_count} steps taken)."
+                    f"({sess.step_count} steps taken)."
                 ),
                 "available_actions": [],
                 "step_reward": final_score,
@@ -534,25 +557,23 @@ def step(action: ActionRequest):
             },
             reward=final_score,
             done=True,
-            state=_get_state(),
+            state=_get_state(sess),
         )
 
     # ── Regular investigation actions ──────────────────────────────────────────
-    obs_data = evidence_engine.process_action(command, params)
+    obs_data = sess.evidence_engine.process_action(command, params)
 
     step_reward = compute_step_reward(
-        command, params, action_history,
-        current_scenario.ground_truth,
-        step_count, current_scenario.optimal_steps, current_scenario.max_steps,
+        command, params, sess.action_history,
+        sess.scenario.ground_truth,
+        sess.step_count, sess.scenario.optimal_steps, sess.scenario.max_steps,
     )
-    action_history.add(f"{command}:{json.dumps(params, sort_keys=True)}")
-    total_reward += step_reward
+    sess.action_history.add(f"{command}:{json.dumps(params, sort_keys=True)}")
+    sess.total_reward += step_reward
 
-    remaining = current_scenario.max_steps - step_count
+    remaining = sess.scenario.max_steps - sess.step_count
     if remaining <= 0:
-        obs_data["narrative"] += (
-            "\n\n⚠️ Step budget exhausted! You must submit your final answer now."
-        )
+        obs_data["narrative"] += "\n\n⚠️ Step budget exhausted! You must submit your final answer now."
         obs_data["available_actions"] = ["submit_final_answer"]
     else:
         obs_data["available_actions"] = AVAILABLE_ACTIONS
@@ -564,13 +585,14 @@ def step(action: ActionRequest):
         observation=obs_data,
         reward=step_reward,
         done=False,
-        state=_get_state(),
+        state=_get_state(sess),
     )
 
 
 @app.get("/state", summary="Get current session state", description="Returns current investigation progress: step count, steps remaining, evidence unlocked so far, and whether the episode is complete. Does not consume a step.")
 def state():
-    return _get_state()
+    sess = _get_or_create_session("default")
+    return _get_state(sess)
 
 
 # ── Entry point ───────────────────────────────────────────────────────────────

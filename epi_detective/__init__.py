@@ -6,11 +6,11 @@
 
 """Epi Detective Environment."""
 
-from .client import EpiDetectiveEnv
-from .models import EpiDetectiveAction, EpiDetectiveObservation
+from .client import EpiDetectiveClient
+from .models import EpiAction, EpiObservation
 
 __all__ = [
-    "EpiDetectiveAction",
-    "EpiDetectiveObservation",
-    "EpiDetectiveEnv",
+    "EpiAction",
+    "EpiObservation",
+    "EpiDetectiveClient",
 ]

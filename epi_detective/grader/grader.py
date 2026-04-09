@@ -23,12 +23,40 @@ import json
 
 
 class EpiGrader:
+    def _grade_multi_outbreak(self, submission, ground_truth, steps_taken, optimal_steps, max_steps):
+        """For hard task: grade against both outbreaks, use best score per component."""
+        best = {"pathogen": 0.0, "source": 0.0, "route": 0.0}
+
+        for outbreak_key in ("outbreak_a", "outbreak_b"):
+            ob = ground_truth[outbreak_key]
+            best["pathogen"] = max(best["pathogen"], self._grade_pathogen(
+                submission.get("pathogen", ""), ob["pathogen"], ob.get("pathogen_synonyms", [])
+            ))
+            best["source"] = max(best["source"], self._grade_source(
+                submission.get("source", ""), ob["source"], ob.get("source_synonyms", [])
+            ))
+            best["route"] = max(best["route"], self._grade_route(
+                submission.get("route", ""), ob["route"]
+            ))
+
+        score = (
+            0.25 * best["pathogen"] +
+            0.25 * best["source"] +
+            0.20 * best["route"] +
+            0.15 * self._grade_case_definition(submission.get("case_definition", {})) +
+            0.15 * self._grade_efficiency(steps_taken, optimal_steps, max_steps)
+        )
+        return round(min(max(score, 0.001), 0.999), 4)
+
     def grade(self, submission: dict, ground_truth: dict, steps_taken: int,
               optimal_steps: int, max_steps: int) -> float:
         """
         Grade a final submission.
         Returns: float between 0.0 and 1.0
         """
+        if ground_truth.get("type") == "multi_outbreak":
+            return self._grade_multi_outbreak(submission, ground_truth, steps_taken, optimal_steps, max_steps)
+
         score = 0.0
 
         # 1. Pathogen identification (0.25)

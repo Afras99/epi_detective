@@ -31,6 +31,7 @@ class EvidenceEngine:
         self.scenario = scenario
         self.unlocked = {"initial_alert"}
         self.action_history = set()
+        self.hypothesis_count = 0
 
     def process_action(self, command: str, parameters: dict) -> dict:
         """Process an agent action and return observation data."""
@@ -189,8 +190,13 @@ class EvidenceEngine:
 
     def _handle_attack_rate(self, params):
         food_item = params.get("food_item", "")
-        first_case = self.scenario.people[0]["case_id"] if self.scenario.people else None
-        if not first_case or food_item not in self.scenario.exposure_matrix.get(first_case, {}):
+        if "exposure_history" not in self.unlocked:
+            return {
+                "result_type": "error",
+                "data": {},
+                "narrative": "You must first gather exposure histories using get_exposure_history before running attack rate analysis.",
+            }
+        if food_item not in self.scenario.menu_items:
             return {
                 "result_type": "attack_rate",
                 "data": {},
@@ -275,24 +281,38 @@ class EvidenceEngine:
         }
 
     def _handle_hypothesis(self, params):
-        gt = self.scenario.ground_truth
-        score = 0.0
-        if self._fuzzy_match(params.get("pathogen", ""), gt["pathogen"], gt.get("pathogen_synonyms", [])):
-            score += 0.4
-        if self._fuzzy_match(params.get("source", ""), gt["source"], gt.get("source_synonyms", [])):
-            score += 0.4
-        if params.get("route", "").lower().strip() == gt["route"].lower():
-            score += 0.2
+        self.hypothesis_count += 1
+        if self.hypothesis_count > 3:
+            return {
+                "result_type": "error",
+                "data": {},
+                "narrative": "Maximum hypothesis attempts (3) reached. You must now submit your final answer.",
+            }
 
+        gt = self.scenario.ground_truth
+        pathogen_correct = self._fuzzy_match(params.get("pathogen", ""), gt["pathogen"], gt.get("pathogen_synonyms", []))
+        source_correct = self._fuzzy_match(params.get("source", ""), gt["source"], gt.get("source_synonyms", []))
+        route_correct = params.get("route", "").lower().strip() == gt["route"].lower()
+
+        score = (0.4 if pathogen_correct else 0.0) + (0.4 if source_correct else 0.0) + (0.2 if route_correct else 0.0)
+
+        attempts_left = 3 - self.hypothesis_count
         narrative = (
-            f"Hypothesis evaluation: {score:.0%} match.\n"
-            f"Pathogen: {'✓' if score >= 0.4 else '✗'} | "
-            f"Source: {'✓' if score >= 0.8 else '✗'} | "
-            f"Route: {'✓' if score >= 1.0 else '✗'}"
+            f"Hypothesis evaluation ({self.hypothesis_count}/3 attempts used, {attempts_left} remaining):\n"
+            f"  Pathogen: {'✓ Correct' if pathogen_correct else '✗ Incorrect'}\n"
+            f"  Source:   {'✓ Correct' if source_correct else '✗ Incorrect'}\n"
+            f"  Route:    {'✓ Correct' if route_correct else '✗ Incorrect'}\n"
+            f"  Overall match: {score:.0%}"
         )
         return {
             "result_type": "hypothesis_feedback",
-            "data": {"partial_score": score},
+            "data": {
+                "pathogen_correct": pathogen_correct,
+                "source_correct": source_correct,
+                "route_correct": route_correct,
+                "partial_score": score,
+                "attempts_remaining": attempts_left,
+            },
             "narrative": narrative,
         }
 

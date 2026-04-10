@@ -176,7 +176,7 @@ class EpiGrader:
             if not val:
                 return False
             v = str(val).lower().strip()
-            return len(v) > 5 and not any(t in v for t in trivial)
+            return len(v) >= 1 and not any(t in v for t in trivial)
 
         score = 0.0
         # Clinical criteria (symptoms, organism) — 40%

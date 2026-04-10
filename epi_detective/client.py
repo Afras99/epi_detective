@@ -1,100 +1,67 @@
-# Copyright (c) Meta Platforms, Inc. and affiliates.
-# All rights reserved.
-#
-# This source code is licensed under the BSD-style license found in the
-# LICENSE file in the root directory of this source tree.
-
 """
-EpiDetective HTTP Client.
+EpiDetective Client — extends OpenEnv's EnvClient for typed WebSocket interaction.
 
-Thin HTTP wrapper around the EpiDetective server REST API.
+Usage:
+    # Async (recommended)
+    async with EpiDetectiveEnv(base_url="ws://localhost:7860") as env:
+        result = await env.reset(task_id="easy")
+        result = await env.step(EpiAction(command="request_line_list"))
 
-Example:
-    >>> client = EpiDetectiveClient("http://localhost:7860")
-    >>> obs = client.reset(task_id="easy")
-    >>> print(obs["observation"]["narrative"])
-    >>>
-    >>> result = client.step("request_line_list")
-    >>> result = client.step("calculate_attack_rate", {"food_item": "potato_salad"})
-    >>> result = client.step("submit_final_answer", {
-    ...     "pathogen": "salmonella",
-    ...     "source": "potato_salad",
-    ...     "route": "foodborne",
-    ...     "case_definition": {"clinical": "diarrhea", "time": "6h after meal", "place": "potluck"},
-    ... })
-    >>> print(result["reward"])
+    # Sync wrapper
+    with EpiDetectiveEnv(base_url="ws://localhost:7860").sync() as env:
+        result = env.reset(task_id="easy")
+        result = env.step(EpiAction(command="request_line_list"))
+
+    # From Docker
+    client = await EpiDetectiveEnv.from_docker_image("epi-detective:latest")
+
+    # From HF Space
+    client = await EpiDetectiveEnv.from_env("username/epi-detective")
 """
+import sys
+from pathlib import Path
 
-from typing import Any, Dict, Optional
+_pkg_root = Path(__file__).parent
+if str(_pkg_root) not in sys.path:
+    sys.path.insert(0, str(_pkg_root))
 
-import requests
+from openenv.core.env_client import EnvClient
+from openenv.core.client_types import StepResult
+from openenv.core.env_server.types import State
+from models import EpiAction, EpiObservation
 
 
-class EpiDetectiveClient:
-    """HTTP client for the EpiDetective environment server."""
+class EpiDetectiveEnv(EnvClient[EpiAction, EpiObservation, State]):
+    """Typed WebSocket client for EpiDetective."""
 
-    def __init__(self, base_url: str = "http://localhost:7860"):
-        self.base_url = base_url.rstrip("/")
-        self._session = requests.Session()
+    def _step_payload(self, action: EpiAction) -> dict:
+        """Serialize action for the wire."""
+        return {
+            "command": action.command,
+            "parameters": action.parameters,
+        }
 
-    def reset(self, task_id: str = "easy", seed: Optional[int] = None) -> Dict[str, Any]:
-        """Reset the environment and start a new investigation.
-
-        Args:
-            task_id: Difficulty level — "easy", "medium", or "hard"
-            seed: Optional random seed for reproducibility
-
-        Returns:
-            StepResponse dict with observation, reward, done, state
-        """
-        payload: Dict[str, Any] = {"task_id": task_id}
-        if seed is not None:
-            payload["seed"] = seed
-        resp = self._session.post(f"{self.base_url}/reset", json=payload)
-        resp.raise_for_status()
-        return resp.json()
-
-    def step(self, command: str, parameters: Optional[Dict[str, Any]] = None) -> Dict[str, Any]:
-        """Execute one investigation action.
-
-        Args:
-            command: Investigation command (e.g. "request_line_list")
-            parameters: Optional command parameters
-
-        Returns:
-            StepResponse dict with observation, reward, done, state
-        """
-        resp = self._session.post(
-            f"{self.base_url}/step",
-            json={"command": command, "parameters": parameters or {}},
+    def _parse_result(self, payload: dict) -> StepResult[EpiObservation]:
+        """Deserialize server response into typed StepResult."""
+        obs_data = payload.get("observation", {})
+        obs = EpiObservation(
+            result_type=obs_data.get("result_type", ""),
+            data=obs_data.get("data", {}),
+            narrative=obs_data.get("narrative", ""),
+            available_actions=obs_data.get("available_actions", []),
+            step_reward=obs_data.get("step_reward", 0.0),
+            done=payload.get("done", False),
+            reward=payload.get("reward", 0.0),
         )
-        resp.raise_for_status()
-        return resp.json()
+        return StepResult(
+            observation=obs,
+            reward=payload.get("reward"),
+            done=payload.get("done", False),
+        )
 
-    def state(self) -> Dict[str, Any]:
-        """Get current environment state."""
-        resp = self._session.get(f"{self.base_url}/state")
-        resp.raise_for_status()
-        return resp.json()
-
-    def health(self) -> Dict[str, Any]:
-        """Check server health."""
-        resp = self._session.get(f"{self.base_url}/health")
-        resp.raise_for_status()
-        return resp.json()
-
-    def schema(self) -> Dict[str, Any]:
-        """Get action/observation schema."""
-        resp = self._session.get(f"{self.base_url}/schema")
-        resp.raise_for_status()
-        return resp.json()
-
-    def close(self):
-        self._session.close()
-
-    def __enter__(self):
-        return self
-
-    def __exit__(self, *args):
-        self.close()
-
+    def _parse_state(self, payload: dict) -> State:
+        """Deserialize state response."""
+        return State(
+            episode_id=payload.get("episode_id", ""),
+            step_count=payload.get("step_count", 0),
+        )

@@ -25,7 +25,7 @@
   },
   "romaine_lettuce": {
     "display_name": "Romaine lettuce",
-    "associated_pathogens": ["e_coli_o157", "norovirus", "cyclospora"],
+    "associated_pathogens": ["e_coli_o157", "norovirus", "cyclospora", "shigella"],
     "synonyms": ["romaine", "lettuce", "romaine lettuce", "salad greens"],
     "typical_attack_rate_if_guilty": [0.25, 0.55]
   },
@@ -61,7 +61,7 @@
   },
   "sandwiches": {
     "display_name": "Sandwiches",
-    "associated_pathogens": ["norovirus", "s_aureus"],
+    "associated_pathogens": ["norovirus", "s_aureus", "shigella"],
     "synonyms": ["sandwich", "sandwiches", "sub", "wrap"],
     "typical_attack_rate_if_guilty": [0.35, 0.65]
   },

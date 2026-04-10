@@ -34,38 +34,50 @@ SUCCESS_SCORE_THRESHOLD = 0.3
 
 client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-SYSTEM_PROMPT = """You are an expert epidemiologist investigating a disease outbreak.
+SYSTEM_PROMPT = """You are an expert CDC field epidemiologist investigating a disease outbreak.
 
 ## Available tools (use ONE per turn):
 - view_initial_alert — Read the outbreak notification
 - request_line_list — Get patient demographics, onset dates, symptoms
 - generate_epi_curve — Temporal case distribution (params: {"grouping": "hour"})
-- request_lab_results — Pathogen lab results (params: {"case_ids": ["c001","c002"]})
-- get_exposure_history — What patients ate/visited (params: {})
-- calculate_attack_rate — 2x2 table + relative risk for a specific food (params: {"food_item": "<food_name_from_exposure_history>"})
-- calculate_odds_ratio — Odds ratio for a food (params: {"exposure": "<food_name_from_exposure_history>"})
-- request_environmental_samples — Facility swab tests (params: {"location": "kitchen"})
-- submit_hypothesis — Test theory mid-investigation, max 3 attempts (params: {"pathogen": "...", "source": "...", "route": "..."})
-- submit_final_answer — Final submission (params: {"pathogen": "...", "source": "...", "route": "...", "case_definition": {"clinical": "...", "time": "...", "place": "..."}})
+- request_lab_results — Pathogen lab results (params: {} for first 10 cases)
+- get_exposure_history — What patients ate (params: {} for first 15 ill patients)
+- calculate_attack_rate — 2x2 table + relative risk (params: {"food_item": "<exact_food_name_from_exposure_history>"})
+- calculate_odds_ratio — Odds ratio (params: {"exposure": "<exact_food_name_from_exposure_history>"})
+- request_environmental_samples — Facility swabs (params: {"location": "kitchen"})
+- submit_hypothesis — Test theory, get per-component feedback (params: {"pathogen": "...", "source": "...", "route": "..."})
+- submit_final_answer — End episode with full answer (params below)
 
 ## Response format — ALWAYS use this exact format:
-THOUGHT: [your reasoning about what the evidence shows and what to do next]
-ACTION: {"command": "tool_name", "parameters": {}}
+THOUGHT: [your reasoning about the evidence so far]
+ACTION: {"command": "<command_name>", "parameters": {<params>}}
 
-## Systematic investigation strategy:
-1. request_line_list — note symptom pattern, onset window, incubation period → narrows pathogen type
-2. request_lab_results — confirm pathogen from specimens (most valuable single action)
-3. get_exposure_history — get list of foods consumed by cases; note the TOP foods by frequency
-4. calculate_attack_rate — run for the top 2-3 suspect foods from exposure history (highest relative risk = guilty food)
-5. submit_final_answer — include pathogen (from lab), source (highest RR food), route (foodborne/waterborne/etc), and case_definition with clinical criteria from symptoms, time window from epi curve, place from the alert
+## Optimal investigation strategy:
+1. request_line_list — check incubation: short <6h = toxin (S.aureus/B.cereus), 6-24h = bacterial toxin, 24-72h = Salmonella/E.coli, >72h = parasites/Hep A
+2. generate_epi_curve — note onset span and date window; narrow peak = point-source exposure
+3. request_lab_results — confirm pathogen from organism names in results
+4. get_exposure_history — read the EXACT food names listed (use these verbatim in attack rate calls)
+5. calculate_attack_rate for the TOP 3 foods by case exposure count — pick food with highest relative risk (>2.0 implicates it)
+6. submit_hypothesis — check pathogen/source/route before final submission
+7. submit_final_answer — with full case definition
 
-## Case definition format:
-- clinical: specific symptoms from the line list (e.g. "nausea, vomiting, and diarrhea within 6-72h")
-- time: onset window (e.g. "onset 6-48 hours after exposure on [event date]")
-- place: exposure location from initial alert (e.g. "attendees of [event] at [venue]")
+## submit_final_answer parameters:
+{
+  "pathogen": "<organism from lab results>",
+  "source": "<food with highest relative risk, exact name from exposure history>",
+  "route": "foodborne",
+  "case_definition": {
+    "clinical": "<specific symptoms listed in line list> confirmed by <lab method>",
+    "time": "<onset window from epi curve, e.g. 12-48 hours after the meal on [date]>",
+    "place": "<specific event and venue from the initial alert>"
+  }
+}
 
-CRITICAL: Use exact food names from the exposure history output (e.g. "potato_salad", "chicken", "ground_beef").
-Do not repeat actions — each repeat costs -0.02. Be efficient."""
+## Rules:
+- NEVER repeat the same action with same parameters (costs -0.02)
+- Food names in parameters must EXACTLY match exposure history output (underscores, no spaces)
+- Route values: foodborne / waterborne / person_to_person / environmental_airborne / animal_contact
+"""
 
 AVAILABLE_ACTIONS = [
     "view_initial_alert", "request_line_list", "generate_epi_curve",
@@ -83,19 +95,29 @@ def log_start(task: str, env: str, model: str) -> None:
     print(f"[START] task={task} env={env} model={model}", flush=True)
 
 
-def log_step(step: int, action: str, reward: float, done: bool, error: Optional[str]) -> None:
+def log_step(
+    step: int, action: str, reward: float, done: bool, error: Optional[str]
+) -> None:
     error_val = error if error else "null"
     done_val = str(done).lower()
-    # Sanitise action: strip newlines so log stays single-line
     action_clean = action.replace("\n", " ").replace("\r", "")[:120]
-    print(f"[STEP] step={step} action={action_clean} reward={reward:.2f} done={done_val} error={error_val}", flush=True)
+    print(
+        f"[STEP] step={step} action={action_clean} "
+        f"reward={reward:.2f} done={done_val} error={error_val}",
+        flush=True,
+    )
 
 
-def log_end(success: bool, steps: int, score: float, rewards: List[float]) -> None:
-    # Score must be strictly between 0 and 1 (exclusive) per validator spec
+def log_end(
+    success: bool, steps: int, score: float, rewards: List[float]
+) -> None:
     score = max(0.001, min(0.999, score))
     rewards_str = ",".join(f"{r:.2f}" for r in rewards)
-    print(f"[END] success={str(success).lower()} steps={steps} score={score:.3f} rewards={rewards_str}", flush=True)
+    print(
+        f"[END] success={str(success).lower()} steps={steps} "
+        f"score={score:.3f} rewards={rewards_str}",
+        flush=True,
+    )
 
 
 # ── Environment helpers ───────────────────────────────────────────────────────
@@ -108,16 +130,20 @@ def wait_for_server(timeout: int = 120) -> None:
         try:
             r = requests.get(f"{ENV_URL}/health", timeout=5)
             if r.status_code == 200:
-                print(f"[DEBUG] Server ready.", flush=True)
+                print("[DEBUG] Server ready.", flush=True)
                 return
         except Exception:
             pass
         time.sleep(3)
-    raise RuntimeError(f"Server at {ENV_URL} did not become ready within {timeout}s")
+    raise RuntimeError(
+        f"Server at {ENV_URL} did not become ready within {timeout}s"
+    )
 
 
 def env_reset(task_id: str) -> dict:
-    resp = requests.post(f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30)
+    resp = requests.post(
+        f"{ENV_URL}/reset", json={"task_id": task_id}, timeout=30
+    )
     resp.raise_for_status()
     return resp.json()
 
@@ -136,7 +162,7 @@ def env_step(command: str, parameters: dict) -> dict:
 
 def parse_action(text: str) -> dict:
     """Extract the ACTION JSON from LLM response text."""
-    match = re.search(r'ACTION:\s*(\{.*?\})', text, re.DOTALL)
+    match = re.search(r'ACTION:\s*(\{[^{}]*\})', text)
     if match:
         try:
             return json.loads(match.group(1))
@@ -158,75 +184,6 @@ def parse_action(text: str) -> dict:
     return {"command": "request_line_list", "parameters": {}}
 
 
-def extract_best_guess(messages: list) -> dict:
-    """
-    Scan conversation history to extract the best available answers when
-    the agent runs out of steps without submitting. Looks for:
-    - Pathogen: from lab results narrative (organism names)
-    - Source: from highest relative_risk food in attack_rate narratives
-    - Route: foodborne default (covers all current tasks)
-    - Case definition: assembled from line_list + epi curve observations
-    """
-    pathogen = "unknown"
-    source = "unknown"
-    onset_window = "unknown onset"
-    place = "unknown location"
-    symptoms_text = "gastrointestinal illness"
-
-    for msg in messages:
-        content = msg.get("content", "")
-        if not content:
-            continue
-
-        # Extract pathogen from lab results
-        m = re.search(r'organism(?:s)? identified[:\s]+([A-Za-z][A-Za-z .,/]+?)(?:\s*\(|\.|;)', content, re.IGNORECASE)
-        if m and pathogen == "unknown":
-            raw = m.group(1).strip().lower().replace(" ", "_").replace(".", "")
-            # Map common display names back to keys
-            for known in ["salmonella", "e_coli", "norovirus", "s_aureus", "campylobacter",
-                          "listeria", "shigella", "hepatitis_a", "c_perfringens",
-                          "b_cereus", "cryptosporidium", "cyclospora", "legionella"]:
-                if known.replace("_", "") in raw.replace("_", ""):
-                    pathogen = known
-                    break
-            if pathogen == "unknown":
-                pathogen = raw[:40]
-
-        # Extract highest-RR food from attack rate narratives
-        m = re.search(r'Relative risk:\s*([\d.]+)', content)
-        if m:
-            rr = float(m.group(1))
-            food_m = re.search(r'Attack rate for ([a-z_]+):', content)
-            if food_m and rr > 1.5:
-                source = food_m.group(1)
-
-        # Extract onset window from epi curve or line list
-        m = re.search(r'onset(?:\s+span)?[:\s]+(\d+)\s+hours', content, re.IGNORECASE)
-        if m and onset_window == "unknown onset":
-            onset_window = f"onset within {m.group(1)} hours of exposure"
-
-        # Extract symptoms from line list
-        m = re.search(r'(?:symptoms|Most common symptoms)[:\s]+([a-z ,/()]+\d+/\d+[a-z ,/()]+)', content, re.IGNORECASE)
-        if m and symptoms_text == "gastrointestinal illness":
-            symptoms_text = m.group(1).strip()[:120]
-
-        # Extract place from initial alert or exposure history
-        m = re.search(r'(?:held at|occurred at|at the|event[:\s]+)([A-Z][A-Za-z ,]+?)(?:\.|,|\n|held)', content)
-        if m and place == "unknown location":
-            place = m.group(1).strip()[:80]
-
-    return {
-        "pathogen": pathogen,
-        "source": source,
-        "route": "foodborne",
-        "case_definition": {
-            "clinical": symptoms_text,
-            "time": onset_window,
-            "place": place,
-        },
-    }
-
-
 def get_llm_action(messages: list) -> str:
     """Call the LLM and return the raw response text."""
     try:
@@ -239,11 +196,47 @@ def get_llm_action(messages: list) -> str:
         return response.choices[0].message.content or ""
     except Exception as e:
         print(f"[DEBUG] LLM error: {e}", flush=True)
-        return (
-            'ACTION: {"command": "submit_final_answer", "parameters": {'
-            '"pathogen": "unknown", "source": "unknown", "route": "foodborne",'
-            '"case_definition": {"clinical": "gastrointestinal illness", "time": "unknown", "place": "unknown"}}}'
+        return ""
+
+
+def get_llm_final_answer(messages: list) -> dict:
+    """Ask the LLM to synthesize collected evidence into a final answer."""
+    synthesis_prompt = (
+        "You have reached the step limit. Based on ALL the evidence collected "
+        "in this conversation, provide your best final answer.\n"
+        "Review the observations for:\n"
+        "- Pathogen name from lab results\n"
+        "- Food with highest relative risk from attack rate analysis\n"
+        "- Transmission route\n"
+        "- Specific symptoms, onset window, and venue name\n\n"
+        "Respond with ONLY this JSON (no other text):\n"
+        '{"pathogen": "...", "source": "...", "route": "foodborne", '
+        '"case_definition": {"clinical": "...", "time": "...", "place": "..."}}'
+    )
+    try:
+        response = client.chat.completions.create(
+            model=MODEL_NAME,
+            messages=messages + [{"role": "user", "content": synthesis_prompt}],
+            max_tokens=400,
+            temperature=0.0,
         )
+        raw = response.choices[0].message.content or ""
+        match = re.search(r'\{.*\}', raw, re.DOTALL)
+        if match:
+            return json.loads(match.group(0))
+    except Exception as e:
+        print(f"[DEBUG] LLM final answer synthesis error: {e}", flush=True)
+    # Absolute fallback — still provides meaningful case definition fields
+    return {
+        "pathogen": "unknown",
+        "source": "unknown",
+        "route": "foodborne",
+        "case_definition": {
+            "clinical": "gastrointestinal illness with nausea and diarrhea",
+            "time": "hours to days after shared meal at event",
+            "place": "shared meal event venue",
+        },
+    }
 
 
 # ── Main task runner ──────────────────────────────────────────────────────────
@@ -264,14 +257,22 @@ def run_task(task_id: str) -> float:
 
         messages = [
             {"role": "system", "content": SYSTEM_PROMPT},
-            {"role": "user", "content": (
-                f"New outbreak investigation:\n\n{alert}\n\n"
-                "Begin your investigation. Use the ACTION format."
-            )},
+            {
+                "role": "user",
+                "content": (
+                    f"New outbreak investigation:\n\n{alert}\n\n"
+                    "Begin your investigation following the strategy in your instructions."
+                ),
+            },
         ]
 
         for turn in range(1, max_turns + 1):
             assistant_msg = get_llm_action(messages)
+
+            if not assistant_msg:
+                # LLM failed — break and force-submit from context
+                break
+
             messages.append({"role": "assistant", "content": assistant_msg})
 
             action = parse_action(assistant_msg)
@@ -290,13 +291,18 @@ def run_task(task_id: str) -> float:
                 done = False
                 rewards.append(reward)
                 steps_taken = turn
-                log_step(step=turn, action=command, reward=reward, done=done, error=error_msg)
+                log_step(
+                    step=turn, action=command, reward=reward,
+                    done=done, error=error_msg,
+                )
                 break
 
             rewards.append(reward)
             steps_taken = turn
-
-            log_step(step=turn, action=command, reward=reward, done=done, error=error_msg)
+            log_step(
+                step=turn, action=command, reward=reward,
+                done=done, error=error_msg,
+            )
 
             if done:
                 score = reward
@@ -312,14 +318,16 @@ def run_task(task_id: str) -> float:
             )
             messages.append({"role": "user", "content": obs_text})
 
-        # Force submit if episode never ended naturally — extract best guess from history
+        # Force submit if episode never ended naturally
         if not episode_done:
             turn = steps_taken + 1
             error_msg = None
-            best_guess = extract_best_guess(messages)
-            print(f"[DEBUG] Force-submit best guess: {best_guess}", flush=True)
+
+            # Use LLM to synthesize a final answer from accumulated evidence
+            final_params = get_llm_final_answer(messages)
+
             try:
-                result = env_step("submit_final_answer", best_guess)
+                result = env_step("submit_final_answer", final_params)
                 reward = float(result["reward"])
                 score = reward
                 done = True
@@ -328,12 +336,14 @@ def run_task(task_id: str) -> float:
                 reward = 0.0
                 score = 0.0
                 done = True
-                episode_done = True
 
             rewards.append(reward)
             steps_taken = turn
             success = score >= SUCCESS_SCORE_THRESHOLD
-            log_step(step=turn, action="submit_final_answer", reward=reward, done=done, error=error_msg)
+            log_step(
+                step=turn, action="submit_final_answer",
+                reward=reward, done=done, error=error_msg,
+            )
 
     except Exception as e:
         print(f"[DEBUG] Task {task_id} exception: {e}", flush=True)
@@ -355,10 +365,12 @@ if __name__ == "__main__":
             all_scores[task] = run_task(task)
         except Exception as e:
             print(f"[DEBUG] Task {task} failed: {e}", flush=True)
-            # Still emit [END] so validator doesn't hang
             log_end(success=False, steps=0, score=0.0, rewards=[])
             all_scores[task] = 0.0
 
-    print(f"\n[DEBUG] FINAL SCORES: easy={all_scores.get('easy',0):.3f} "
-          f"medium={all_scores.get('medium',0):.3f} "
-          f"hard={all_scores.get('hard',0):.3f}", flush=True)
+    print(
+        f"\n[DEBUG] FINAL SCORES: easy={all_scores.get('easy', 0):.3f} "
+        f"medium={all_scores.get('medium', 0):.3f} "
+        f"hard={all_scores.get('hard', 0):.3f}",
+        flush=True,
+    )

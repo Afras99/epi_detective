@@ -33,7 +33,7 @@ Each scenario has planted ground truth, enabling fully deterministic grading wit
 | Task | Max Steps | Scenario | Key challenge |
 |------|-----------|----------|---------------|
 | **easy** | 15 | Point-source foodborne outbreak at a shared meal | Single pathogen, single source, multiple red herrings |
-| **medium** | 25 | Community respiratory outbreak (Legionella) | Concurrent flu season creates signal/noise problem |
+| **medium** | 25 | Community-wide foodborne outbreak across multiple locations | Concurrent seasonal illness creates signal/noise problem |
 | **hard** | 35 | Two overlapping outbreaks in same metro area | Must separate two clusters, identify both pathogens + sources |
 
 ---
@@ -83,9 +83,9 @@ epi_detective/
 ├── models.py                 # EpiAction, EpiObservation (Pydantic)
 ├── client.py                 # HTTP client helper
 ├── data/
-│   ├── pathogens.json        # 21 pathogen profiles
-│   ├── food_vehicles.json    # 15 food vehicles with pathogen associations
-│   └── settings.json         # 6 outbreak venues with typical menus
+│   ├── pathogens.json        # 21 pathogen profiles (CDC/FDA-sourced, see below)
+│   ├── food_vehicles.json    # 15 food vehicles with pathogen associations (FDOSS-sourced)
+│   └── settings.json         # 6 outbreak venues (NORS setting classifications)
 ├── engine/
 │   ├── scenario_generator.py # Seeded scenario generation for all 3 tasks
 │   └── evidence_engine.py    # Information gating — 9 investigation handlers
@@ -94,6 +94,26 @@ epi_detective/
 └── server/
     └── app.py                # FastAPI: /reset /step /state /schema /health
 ```
+
+---
+
+## Epidemiological data sources
+
+All scenario data is grounded in published CDC and FDA surveillance research — no numbers were invented.
+
+**`pathogens.json` — 21 pathogen profiles:**
+- **CDC "Confirming an Etiology" tables** — incubation periods and lab confirmation criteria (e.g., Salmonella median incubation 24h, lab confirmation via culture or CIDT)
+- **FDA Bad Bug Book, 2nd Edition** — symptom profiles, food vehicle associations, and contamination mechanisms for each organism
+- **Chai et al. (2019)** — statistically validated incubation period distributions derived from 16 years of FDA Outbreak Data Reporting System (FDOSS) data. Used for the lognormal incubation model in scenario generation.
+
+**`food_vehicles.json` — 15 food vehicles:**
+- **NORS/BEAM Dashboard** — CDC's National Outbreak Reporting System, showing empirical pathogen-food pairings from reported U.S. outbreaks
+- **FDOSS surveillance summaries (2009–2022)** — attack rates and food associations (e.g., Salmonella ↔ poultry/eggs, E. coli O157:H7 ↔ ground beef/leafy greens)
+
+**`settings.json` — 6 outbreak venues:**
+- **NORS setting classifications** — the venue categories CDC uses for classifying reported outbreaks (restaurant, catering/banquet, school, private residence, institution, etc.)
+
+All data is loaded from static JSON files at server startup — no API calls, no internet dependency at runtime.
 
 ---
 

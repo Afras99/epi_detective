@@ -570,7 +570,6 @@ def step(action: ActionRequest):
     step_reward = compute_step_reward(
         command, params, sess.action_history,
         sess.scenario.ground_truth,
-        sess.step_count, sess.scenario.optimal_steps, sess.scenario.max_steps,
     )
     sess.action_history.add(f"{command}:{json.dumps(params, sort_keys=True)}")
     sess.total_reward += step_reward
@@ -593,9 +592,9 @@ def step(action: ActionRequest):
     )
 
 
-@app.get("/state", summary="Get current session state", description="Returns current investigation progress: step count, steps remaining, evidence unlocked so far, and whether the episode is complete. Does not consume a step.")
-def state():
-    sess = _get_or_create_session("default")
+@app.get("/state", summary="Get current session state", description="Returns current investigation progress: step count, steps remaining, evidence unlocked so far, and whether the episode is complete. Does not consume a step. Pass ?session_id=<id> to query a specific session.")
+def state(session_id: Optional[str] = None):
+    sess = _get_or_create_session(session_id or "default")
     return _get_state(sess)
 
 

@@ -358,12 +358,17 @@ class EvidenceEngine:
         }
 
     def _fuzzy_match(self, submitted, correct, synonyms):
+        """Match with same logic as EpiGrader — exact, synonym, or genus partial."""
         sub = submitted.lower().strip().replace(" ", "_").replace("-", "_")
         if sub == correct.lower():
             return True
         for syn in synonyms:
             if sub == syn.lower().replace(" ", "_").replace("-", "_"):
                 return True
+        # Genus partial match (consistent with grader's 0.5 partial credit)
+        correct_genus = correct.split("_")[0]
+        if correct_genus and correct_genus in sub:
+            return True
         return False
 
     def _top_symptoms(self, ill_people):

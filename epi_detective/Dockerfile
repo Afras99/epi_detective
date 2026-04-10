@@ -9,7 +9,8 @@ RUN pip install --no-cache-dir \
     uvicorn>=0.23.0 \
     pydantic>=2.0.0 \
     openai>=1.0.0 \
-    requests>=2.31.0
+    requests>=2.31.0 \
+    openenv-core>=0.2.0
 
 EXPOSE 7860
 

@@ -1,3 +1,13 @@
+---
+title: Epi Detective
+emoji: 🦠
+colorFrom: blue
+colorTo: green
+sdk: docker
+app_file: epi_detective/server/app.py
+pinned: false
+---
+
 # EpiDetective — Disease Outbreak Investigation Environment
 
 An OpenEnv-compatible reinforcement learning environment where AI agents investigate disease outbreaks by strategically gathering evidence, forming hypotheses, and identifying pathogens, contamination sources, and transmission routes.

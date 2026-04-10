@@ -4,7 +4,6 @@ emoji: 🦠
 colorFrom: blue
 colorTo: green
 sdk: docker
-app_file: epi_detective/server/app.py
 pinned: false
 ---
 

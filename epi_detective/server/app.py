@@ -69,6 +69,22 @@ _base_app = create_app(
 app = FastAPI(title="EpiDetective", version="1.0.0")
 
 
+@app.get("/")
+async def root():
+    return {
+        "name": "EpiDetective",
+        "description": "Disease outbreak investigation RL environment",
+        "endpoints": {
+            "POST /reset": "Start a new investigation (params: task_id, seed, session_id)",
+            "POST /step": "Take an investigation action (params: command, parameters, session_id)",
+            "GET  /state": "Get current episode state (params: session_id)",
+            "GET  /health": "Health check",
+            "GET  /schema": "Action/observation schema",
+        },
+        "tasks": ["easy", "medium", "hard"],
+    }
+
+
 @app.post("/reset")
 async def reset(req: ResetRequest):
     env = _get_or_create_session(req.session_id)

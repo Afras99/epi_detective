@@ -13,9 +13,9 @@ import sys
 from pathlib import Path
 from typing import Any, Dict, Optional
 
-from fastapi import FastAPI, HTTPException
+from fastapi import FastAPI, HTTPException, Request
 from fastapi.responses import HTMLResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 
 _pkg_root = Path(__file__).parent.parent
 if str(_pkg_root) not in sys.path:
@@ -152,7 +152,15 @@ async def root():
 
 
 @app.post("/reset")
-async def reset(req: ResetRequest):
+async def reset(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        req = ResetRequest(**body)
+    except (ValidationError, TypeError):
+        req = ResetRequest()
     env = _get_or_create_session(req.session_id)
     obs = env.reset(seed=req.seed, task_id=req.task_id)
     return JSONResponse({
@@ -164,7 +172,15 @@ async def reset(req: ResetRequest):
 
 
 @app.post("/step")
-async def step(req: StepRequest):
+async def step(request: Request):
+    try:
+        body = await request.json()
+    except Exception:
+        body = {}
+    try:
+        req = StepRequest(**body)
+    except (ValidationError, TypeError) as e:
+        raise HTTPException(status_code=422, detail=str(e))
     env = _sessions.get(req.session_id)
     if env is None:
         raise HTTPException(

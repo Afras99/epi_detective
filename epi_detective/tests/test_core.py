@@ -219,3 +219,128 @@ class TestEvidenceEngine:
         result = self.engine.process_action("request_lab_results", {})
         assert result["result_type"] == "lab_results"
         assert any(r["result"] == "POSITIVE" for r in result["data"]["results"].values())
+
+    def test_unknown_command_returns_error(self):
+        result = self.engine.process_action("not_a_real_command", {})
+        assert result["result_type"] == "error"
+        assert "Unknown command" in result["narrative"]
+
+    def test_epi_curve_returns_curve_data(self):
+        result = self.engine.process_action("generate_epi_curve", {"grouping": "hour"})
+        assert result["result_type"] == "epi_curve"
+        assert "curve" in result["data"]
+        assert len(result["data"]["curve"]) > 0
+
+    def test_environmental_samples_kitchen(self):
+        result = self.engine.process_action("request_environmental_samples", {"location": "kitchen"})
+        assert result["result_type"] == "environmental"
+        assert "location" in result["data"]
+
+    def test_odds_ratio_without_exposure_history_returns_empty_data(self):
+        food = self.scenario.menu_items[0]
+        result = self.engine.process_action("calculate_odds_ratio", {"exposure": food})
+        # odds_ratio wraps the inner error — returns type odds_ratio with empty data
+        assert result["result_type"] == "odds_ratio"
+        assert not result["data"]
+
+    def test_odds_ratio_after_exposure_history(self):
+        self.engine.process_action("get_exposure_history", {})
+        food = self.scenario.menu_items[0]
+        result = self.engine.process_action("calculate_odds_ratio", {"exposure": food})
+        assert result["result_type"] == "odds_ratio"
+        assert "odds_ratio" in result["data"]
+
+
+class TestHardScenario:
+    """Tests specific to the hard (multi-outbreak) task."""
+
+    def setup_method(self):
+        self.gen = ScenarioGenerator()
+
+    def test_hard_ground_truth_is_multi_outbreak(self):
+        s = self.gen.generate("hard", seed=42)
+        gt = s.ground_truth
+        assert gt.get("type") == "multi_outbreak"
+        assert "outbreak_a" in gt
+        assert "outbreak_b" in gt
+
+    def test_hard_both_outbreaks_have_required_fields(self):
+        s = self.gen.generate("hard", seed=42)
+        for key in ("outbreak_a", "outbreak_b"):
+            ob = s.ground_truth[key]
+            assert "pathogen" in ob
+            assert "source" in ob
+            assert "route" in ob
+
+    def test_hard_people_split_across_outbreaks(self):
+        s = self.gen.generate("hard", seed=42)
+        outbreak_labels = {p.get("outbreak") for p in s.people}
+        # Should have people from both outbreaks (and possibly "none")
+        assert "A" in outbreak_labels
+        assert "B" in outbreak_labels
+
+    def test_hard_lab_results_contain_two_organisms(self):
+        s = self.gen.generate("hard", seed=42)
+        organisms = {r.get("organism") for r in s.lab_results.values() if r["result"] == "POSITIVE"}
+        # Hard scenario must have at least 2 distinct pathogen organisms
+        assert len(organisms) >= 2
+
+    def test_hard_grader_credits_either_outbreak(self):
+        """Grader should give partial credit for correctly identifying outbreak_b."""
+        grader = EpiGrader()
+        s = self.gen.generate("hard", seed=42)
+        gt = s.ground_truth
+        ob_b = gt["outbreak_b"]
+        score = grader.grade(
+            {"pathogen": ob_b["pathogen"], "source": ob_b["source"],
+             "route": ob_b["route"],
+             "case_definition": {"clinical": "x", "time": "x", "place": "x"}},
+            gt, steps_taken=15, optimal_steps=20, max_steps=35,
+        )
+        assert score > 0.5
+
+
+class TestParseAction:
+    """Tests for inference.py parse_action robustness."""
+
+    def setup_method(self):
+        sys.path.insert(0, str(Path(__file__).parent.parent.parent))
+        # Import parse_action from inference.py at repo root
+        import importlib.util
+        spec = importlib.util.spec_from_file_location(
+            "inference",
+            Path(__file__).parent.parent.parent / "inference.py",
+        )
+        if spec and spec.loader:
+            mod = importlib.util.module_from_spec(spec)
+            # Patch env vars so OpenAI client doesn't fail on import
+            import os
+            os.environ.setdefault("HF_TOKEN", "dummy")
+            try:
+                spec.loader.exec_module(mod)
+                self.parse_action = mod.parse_action
+            except Exception:
+                self.parse_action = None
+
+    def _parse(self, text):
+        if self.parse_action is None:
+            import pytest
+            pytest.skip("inference.py could not be imported")
+        return self.parse_action(text)
+
+    def test_simple_action(self):
+        result = self._parse('THOUGHT: checking\nACTION: {"command": "request_line_list", "parameters": {}}')
+        assert result["command"] == "request_line_list"
+
+    def test_nested_parameters(self):
+        result = self._parse('ACTION: {"command": "calculate_attack_rate", "parameters": {"food_item": "potato_salad"}}')
+        assert result["command"] == "calculate_attack_rate"
+        assert result["parameters"]["food_item"] == "potato_salad"
+
+    def test_fallback_on_malformed_json(self):
+        result = self._parse("I think we should request_line_list next.")
+        assert result["command"] == "request_line_list"
+
+    def test_empty_text_returns_default(self):
+        result = self._parse("")
+        assert "command" in result

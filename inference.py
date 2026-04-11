@@ -34,50 +34,83 @@ SUCCESS_SCORE_THRESHOLD = 0.3
 
 client = OpenAI(base_url=API_BASE_URL, api_key=HF_TOKEN)
 
-SYSTEM_PROMPT = """You are an expert CDC field epidemiologist investigating a disease outbreak.
+SYSTEM_PROMPT = """<system>
+You are an expert CDC field epidemiologist. Your job is to investigate a disease outbreak by gathering evidence systematically and identifying: (1) the causative pathogen, (2) the contaminated food source, (3) the transmission route.
+</system>
 
-## Available tools (use ONE per turn):
-- view_initial_alert — Read the outbreak notification
-- request_line_list — Get patient demographics, onset dates, symptoms
-- generate_epi_curve — Temporal case distribution (params: {"grouping": "hour"})
-- request_lab_results — Pathogen lab results (params: {} for first 10 cases)
-- get_exposure_history — What patients ate (params: {} for first 15 ill patients)
-- calculate_attack_rate — 2x2 table + relative risk (params: {"food_item": "<exact_food_name_from_exposure_history>"})
-- calculate_odds_ratio — Odds ratio (params: {"exposure": "<exact_food_name_from_exposure_history>"})
-- request_environmental_samples — Facility swabs (params: {"location": "kitchen"})
-- submit_hypothesis — Test theory, get per-component feedback (params: {"pathogen": "...", "source": "...", "route": "..."})
-- submit_final_answer — End episode with full answer (params below)
+<tools>
+Use EXACTLY ONE tool per turn. Available commands:
+- view_initial_alert       — Read the outbreak notification (no params needed)
+- request_line_list        — Patient demographics, onset dates, symptoms
+- generate_epi_curve       — Temporal distribution: params {"grouping": "hour"}
+- request_lab_results      — Lab-confirmed pathogen: params {}
+- get_exposure_history     — What patients ate: params {}
+- calculate_attack_rate    — 2x2 table + relative risk: params {"food_item": "<EXACT name from exposure history>"}
+- calculate_odds_ratio     — Odds ratio: params {"exposure": "<EXACT name from exposure history>"}
+- request_environmental_samples — Kitchen swabs: params {"location": "kitchen"}
+- submit_hypothesis        — Per-component feedback (max 3): params {"pathogen": "...", "source": "...", "route": "..."}
+- submit_final_answer      — End episode with scored answer
+</tools>
 
-## Response format — ALWAYS use this exact format:
-THOUGHT: [your reasoning about the evidence so far]
-ACTION: {"command": "<command_name>", "parameters": {<params>}}
+<instructions>
+## Response format — STRICT, every turn:
+THOUGHT: [Reason step by step about what the evidence tells you. Identify the pathogen, source, and route based on facts gathered so far.]
+ACTION: {"command": "<command_name>", "parameters": {"key": "value"}}
 
-## Optimal investigation strategy:
-1. request_line_list — check incubation: short <6h = toxin (S.aureus/B.cereus), 6-24h = bacterial toxin, 24-72h = Salmonella/E.coli, >72h = parasites/Hep A
-2. generate_epi_curve — note onset span and date window; narrow peak = point-source exposure
-3. request_lab_results — confirm pathogen from organism names in results
-4. get_exposure_history — read the EXACT food names listed (use these verbatim in attack rate calls)
-5. calculate_attack_rate for the TOP 3 foods by case exposure count — pick food with highest relative risk (>2.0 implicates it)
-6. submit_hypothesis — check pathogen/source/route before final submission
-7. submit_final_answer — with full case definition
+## Optimal investigation sequence:
+Step 1 — request_line_list
+  - Count cases, note age/sex distribution
+  - Calculate median incubation: onset_datetime minus meal time
+  - <6h = S. aureus or B. cereus (toxin); 6-16h = C. perfringens; 12-48h = Salmonella/E. coli; 24-72h = Campylobacter; >72h = Hep A / Listeria / parasites
+  - Bloody diarrhea → E. coli O157:H7 or Shigella; Neurological → Botulinum/Listeria
 
-## submit_final_answer parameters:
+Step 2 — generate_epi_curve
+  - Narrow peak (all cases within 1-2 incubation periods) = point-source (single shared meal)
+  - Prolonged tail = propagated or continuous source
+
+Step 3 — request_lab_results
+  - This is the most important step. The organism name in results IS the pathogen answer.
+  - If TWO organisms appear → hard multi-outbreak scenario; report the dominant one.
+
+Step 4 — get_exposure_history
+  - Read the EXACT food names returned (e.g., "potato_salad" not "potato salad")
+  - Note foods eaten by most ill cases — these are your candidates
+
+Step 5 — calculate_attack_rate for TOP 3 most-consumed foods
+  - Relative Risk > 3.0 strongly implicates the food
+  - Relative Risk < 1.5 clears the food
+  - Pick the food with highest RR as your source
+
+Step 6 — submit_hypothesis (optional but recommended)
+  - Use feedback to confirm pathogen/source/route before final submission
+  - If pathogen ✓ but source ✗ → try calculate_attack_rate on other foods
+
+Step 7 — submit_final_answer
+  - Use EXACT organism name from lab results as pathogen
+  - Use EXACT food name (with underscores) from exposure history as source
+</instructions>
+
+<output_format>
+submit_final_answer parameters MUST follow this structure:
 {
-  "pathogen": "<organism from lab results>",
-  "source": "<food with highest relative risk, exact name from exposure history>",
+  "pathogen": "<exact organism name from lab results>",
+  "source": "<exact food_item name from exposure_history — underscores not spaces>",
   "route": "foodborne",
   "case_definition": {
-    "clinical": "<specific symptoms listed in line list> confirmed by <lab method>",
-    "time": "<onset window from epi curve, e.g. 12-48 hours after the meal on [date]>",
-    "place": "<specific event and venue from the initial alert>"
+    "clinical": "<dominant symptoms from line list, e.g. nausea, vomiting, diarrhea confirmed by culture>",
+    "time": "<incubation window, e.g. 6-48 hours after the shared meal on [date]>",
+    "place": "<venue name and event type from initial alert>"
   }
 }
+</output_format>
 
-## Rules:
-- NEVER repeat the same action with same parameters (costs -0.02)
+<rules>
+- NEVER repeat the same action+parameters (penalty: -0.02 reward)
 - Food names in parameters must EXACTLY match exposure history output (underscores, no spaces)
-- Route values: foodborne / waterborne / person_to_person / environmental_airborne / animal_contact
-"""
+- Route values: foodborne | waterborne | person_to_person | environmental_airborne | animal_contact
+- Do not skip step 3 (lab results) — it gives the highest reward (+0.08) and the definitive pathogen
+- Do not call submit_final_answer without at least: line_list + lab_results + exposure_history
+</rules>"""
 
 AVAILABLE_ACTIONS = [
     "view_initial_alert", "request_line_list", "generate_epi_curve",
@@ -161,21 +194,47 @@ def env_step(command: str, parameters: dict) -> dict:
 # ── LLM helpers ───────────────────────────────────────────────────────────────
 
 def parse_action(text: str) -> dict:
-    """Extract the ACTION JSON from LLM response text."""
-    match = re.search(r'ACTION:\s*(\{[^{}]*\})', text)
-    if match:
-        try:
-            return json.loads(match.group(1))
-        except json.JSONDecodeError:
-            pass
+    """Extract the ACTION JSON from LLM response text.
 
-    match = re.search(r'\{[^{}]*"command"[^{}]*\}', text)
-    if match:
-        try:
-            return json.loads(match.group(0))
-        except json.JSONDecodeError:
-            pass
+    Handles nested JSON (e.g. parameters: {"food_item": "..."}) by scanning
+    for balanced braces rather than using a [^{}]* pattern that stops too early.
+    """
+    # Find ACTION: marker then extract the balanced JSON object that follows
+    action_match = re.search(r'ACTION:\s*(\{)', text)
+    if action_match:
+        start = action_match.start(1)
+        depth = 0
+        for i, ch in enumerate(text[start:], start):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    try:
+                        return json.loads(candidate)
+                    except json.JSONDecodeError:
+                        break
 
+    # Fallback: find any JSON object with a "command" key
+    for match in re.finditer(r'\{', text):
+        start = match.start()
+        depth = 0
+        for i, ch in enumerate(text[start:], start):
+            if ch == '{':
+                depth += 1
+            elif ch == '}':
+                depth -= 1
+                if depth == 0:
+                    candidate = text[start:i + 1]
+                    try:
+                        obj = json.loads(candidate)
+                        if "command" in obj:
+                            return obj
+                    except json.JSONDecodeError:
+                        break
+
+    # Last resort: match action name mentioned in text
     text_lower = text.lower()
     for action in AVAILABLE_ACTIONS:
         if action.replace("_", " ") in text_lower or action in text_lower:

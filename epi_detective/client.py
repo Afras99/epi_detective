@@ -28,7 +28,10 @@ if str(_pkg_root) not in sys.path:
 from openenv.core.env_client import EnvClient
 from openenv.core.client_types import StepResult
 from openenv.core.env_server.types import State
-from models import EpiAction, EpiObservation
+try:
+    from epi_detective.models import EpiAction, EpiObservation
+except ImportError:
+    from models import EpiAction, EpiObservation  # type: ignore
 
 
 class EpiDetectiveEnv(EnvClient[EpiAction, EpiObservation, State]):

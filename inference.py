@@ -151,7 +151,7 @@ def env_reset(task_id: str) -> dict:
 def env_step(command: str, parameters: dict) -> dict:
     resp = requests.post(
         f"{ENV_URL}/step",
-        json={"command": command, "parameters": parameters},
+        json={"action": {"command": command, "parameters": parameters}},
         timeout=30,
     )
     resp.raise_for_status()
@@ -313,7 +313,6 @@ def run_task(task_id: str) -> float:
             obs_text = (
                 f"OBSERVATION:\n{obs.get('narrative', '')}\n\n"
                 f"Step reward: {obs.get('step_reward', 0):.4f}\n"
-                f"Steps remaining: {result['state'].get('steps_remaining', '?')}\n"
                 f"Available actions: {', '.join(obs.get('available_actions', []))}"
             )
             messages.append({"role": "user", "content": obs_text})

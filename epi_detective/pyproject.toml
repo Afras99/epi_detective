@@ -34,7 +34,7 @@ server = "server.app:main"
 
 [tool.setuptools]
 include-package-data = true
-packages = ["server", "engine", "grader"]
+packages = [".", "server", "engine", "grader"]
 
 [dependency-groups]
 dev = [
